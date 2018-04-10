@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:aop="http://www.springframework.org/schema/aop" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:p="http://www.springframework.org/schema/p" xmlns:mvc="http://www.springframework.org/schema/mvc"
+	xmlns:context="http://www.springframework.org/schema/context" xmlns:tx="http://www.springframework.org/schema/tx"
+	xmlns:websocket="http://www.springframework.org/schema/websocket"
+	xmlns:jpa="http://www.springframework.org/schema/data/jpa" xmlns:cache="http://www.springframework.org/schema/cache"
+	xmlns:jdbc="http://www.springframework.org/schema/jdbc" xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+	xmlns:task="http://www.springframework.org/schema/task"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans  
+    http://www.springframework.org/schema/beans/spring-beans.xsd  
+    http://www.springframework.org/schema/mvc  
+    http://www.springframework.org/schema/mvc/spring-mvc-4.0.xsd  
+    http://www.springframework.org/schema/aop  
+    http://www.springframework.org/schema/aop/spring-aop-4.0.xsd  
+    http://www.springframework.org/schema/context  
+    http://www.springframework.org/schema/context/spring-context-4.0.xsd  
+    http://www.springframework.org/schema/cache  
+    http://www.springframework.org/schema/cache/spring-cache-4.0.xsd  
+    http://www.springframework.org/schema/tx  
+    http://www.springframework.org/schema/tx/spring-tx-4.0.xsd  
+    http://www.springframework.org/schema/rabbit  
+    http://www.springframework.org/schema/rabbit/spring-rabbit-1.4.xsd  
+    http://www.springframework.org/schema/task  
+    http://www.springframework.org/schema/task/spring-task-4.0.xsd">
+<!-- 配置 -->
+    <context:property-placeholder location="classpath:config.properties" />
+
+	<bean id="connectionFactory"
+		class="org.springframework.amqp.rabbit.connection.CachingConnectionFactory">
+		<constructor-arg value="${rabbitmq.host}" />
+		<!-- <property name="username" value="${rabbitmq.username}" />
+		<property name="password" value="${rabbitmq.password}" />
+		<property name="port" value="${rabbitmq.port}" /> -->
+		<property name="channelCacheSize" value="5" />
+	</bean>
+
+	<!--通过指定下面的admin信息，当前producer中的exchange和queue会在rabbitmq服务器上自动生成 -->
+	<rabbit:admin connection-factory="connectionFactory" />
+
+	<!--定义queue -->
+	<rabbit:queue name="queueTest" durable="true" auto-delete="false"
+		exclusive="false" />
+
+	<!-- 定义direct exchange，绑定queueTest -->
+	<rabbit:direct-exchange name="exchangeTest"
+		durable="true" auto-delete="false">
+		<rabbit:bindings>
+			<rabbit:binding queue="queueTest" key=""></rabbit:binding>
+		</rabbit:bindings>
+	</rabbit:direct-exchange>
+
+
+	<!-- 消息转化 -->
+	<bean class="org.springframework.amqp.rabbit.core.RabbitTemplate"
+		id="rabbitTemplate">
+		<property name="connectionFactory" ref="connectionFactory" />
+		<property name="channelTransacted" value="true" />
+		<property name="exchange" value="exchangeTest" />
+		<property name="messageConverter">
+			<bean
+				class="org.springframework.amqp.support.converter.JsonMessageConverter">
+				<!-- if necessary, override the DefaultClassMapper -->
+				<property name="classMapper" ref="customClassmapper" />
+			</bean>
+		</property>
+	</bean>
+	<bean id="customClassmapper" class="org.springframework.amqp.support.converter.DefaultClassMapper"></bean>
+	
+	<!-- 监听生产者发送的消息开始 -->
+	<!-- 消息接收者 -->
+	<bean id="messageReceiver" class="org.rabbitmq.demo3.consumer.listener.MessageConsumer"></bean>
+
+	<!-- queue litener 观察 监听模式 当有消息到达时会通知监听在对应的队列上的监听对象 -->
+	<!-- acknowledeg = "manual":意为表示该消费者的ack方式为手动 ；acknowledge="auto"表示自动-->
+	<!-- prefetch=10设置预取消息数目为10 -->
+	<rabbit:listener-container  
+	prefetch="10" 
+	connection-factory="connectionFactory"  
+	acknowledge="manual">
+		<rabbit:listener  queues="queueTest" ref="messageReceiver" />
+	</rabbit:listener-container>
+	<!-- 监听生产者发送的消息结束 -->
+</beans>
